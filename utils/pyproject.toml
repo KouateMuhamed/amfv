@@ -1,11 +1,9 @@
 [project]
-name = "amfv-search"
+name = "amfv-utils"
 version = "0.0.1"
-description = "Medical evidence search component for AMFV"
+description = "Shared utils for AMFV packages"
 requires-python = ">=3.13"
-dependencies = [
-    "amfv-utils",
-]
+dependencies = []
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]

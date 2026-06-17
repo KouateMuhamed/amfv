@@ -8,6 +8,7 @@ members = [
     "amfv-datasets",
     "amfv-decomposer",
     "amfv-search",
+    "amfv-utils",
     "amfv-verifier",
 ]
 
@@ -21,6 +22,7 @@ dev = [
     { name = "amfv-datasets" },
     { name = "amfv-decomposer" },
     { name = "amfv-search" },
+    { name = "amfv-utils" },
     { name = "amfv-verifier" },
     { name = "pytest" },
     { name = "ruff" },
@@ -33,6 +35,7 @@ dev = [
     { name = "amfv-datasets", editable = "datasets" },
     { name = "amfv-decomposer", editable = "decomposer" },
     { name = "amfv-search", editable = "search" },
+    { name = "amfv-utils", editable = "utils" },
     { name = "amfv-verifier", editable = "verifier" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.11" },
@@ -42,21 +45,50 @@ dev = [
 name = "amfv-datasets"
 version = "0.0.1"
 source = { editable = "datasets" }
+dependencies = [
+    { name = "amfv-utils" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "amfv-utils", editable = "utils" }]
 
 [[package]]
 name = "amfv-decomposer"
 version = "0.0.1"
 source = { editable = "decomposer" }
+dependencies = [
+    { name = "amfv-utils" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "amfv-utils", editable = "utils" }]
 
 [[package]]
 name = "amfv-search"
 version = "0.0.1"
 source = { editable = "search" }
+dependencies = [
+    { name = "amfv-utils" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "amfv-utils", editable = "utils" }]
+
+[[package]]
+name = "amfv-utils"
+version = "0.0.1"
+source = { editable = "utils" }
 
 [[package]]
 name = "amfv-verifier"
 version = "0.0.1"
 source = { editable = "verifier" }
+dependencies = [
+    { name = "amfv-utils" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "amfv-utils", editable = "utils" }]
 
 [[package]]
 name = "colorama"

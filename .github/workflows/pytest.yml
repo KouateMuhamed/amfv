@@ -6,25 +6,27 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/pytest.yml"
       - "ruff.toml"
       - "pyproject.toml"
       - "uv.lock"
       - "datasets/**"
       - "decomposer/**"
       - "search/**"
+      - "utils/**"
       - "verifier/**"
       - "baseline/**"
       - "training/**"
   pull_request:
     paths:
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/pytest.yml"
       - "ruff.toml"
       - "pyproject.toml"
       - "uv.lock"
       - "datasets/**"
       - "decomposer/**"
       - "search/**"
+      - "utils/**"
       - "verifier/**"
       - "baseline/**"
       - "training/**"
@@ -40,8 +42,8 @@ jobs:
         project:
           - name: workspace
             directory: "."
-            lint-targets: "datasets decomposer search verifier"
-            test-directories: "datasets/test decomposer/test search/test verifier/test"
+            lint-targets: "datasets decomposer search utils verifier"
+            test-directories: "datasets/test decomposer/test search/test utils/test verifier/test"
           - name: baseline
             directory: "baseline"
             lint-targets: "."
@@ -71,6 +73,7 @@ jobs:
             datasets/pyproject.toml
             decomposer/pyproject.toml
             search/pyproject.toml
+            utils/pyproject.toml
             verifier/pyproject.toml
 
       - name: Install project

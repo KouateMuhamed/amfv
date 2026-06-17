@@ -1,9 +1,6 @@
 # AMFV Baseline
 
-The full Baichuan-M3 pipeline for the
-[Agentic Medical Fact Verifier](../README.md) on off-the-shelf LLMs, no
-training. Makes the system runnable end to end and sets a target for the
-components we later specialize.
+A baseline Baichuan-M3-style fact verification pipeline using on off-the-shelf prompted models and components.
 
 ## Pipeline
 
@@ -17,8 +14,6 @@ long-form answer
   → cache update
 ```
 
-Claims hit a cache of previously verified facts first; new claims trigger
-retrieval + verification and are written back. A simple ReACT loop ties the
-steps together.
+Claims hit a cache of previously verified facts first; new claims trigger retrieval + verification and are written back. A simple ReACT loop ties the steps together.
 
-Independent package — excluded from the root `uv` workspace.
+Independent package, excluded from the root `uv` workspace.

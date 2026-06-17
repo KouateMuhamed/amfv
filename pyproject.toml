@@ -11,6 +11,7 @@ dev = [
     "amfv-datasets",
     "amfv-decomposer",
     "amfv-search",
+    "amfv-utils",
     "amfv-verifier",
     "pytest>=8.0",
     "ruff>=0.11",
@@ -23,6 +24,7 @@ package = false
 amfv-datasets = { workspace = true }
 amfv-decomposer = { workspace = true }
 amfv-search = { workspace = true }
+amfv-utils = { workspace = true }
 amfv-verifier = { workspace = true }
 
 [tool.uv.workspace]
@@ -30,6 +32,7 @@ members = [
     "datasets",
     "decomposer",
     "search",
+    "utils",
     "verifier",
 ]
 exclude = [
@@ -42,5 +45,6 @@ testpaths = [
     "datasets/test",
     "decomposer/test",
     "search/test",
+    "utils/test",
     "verifier/test",
 ]

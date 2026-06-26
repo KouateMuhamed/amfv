@@ -6,6 +6,7 @@ Python style for this project. Formatting and lint rules are enforced by [ruff.t
 
 - Declare `__all__` in modules with a public API, and keep package `__init__.py` files to re-exports.
 - Separate the public interface from implementation: a clean public entry point that dispatches to private `_`-prefixed helpers.
+- Do not add pass-through helpers whose only behavior is calling another function with the same arguments. A helper should own real policy, validation, adaptation, error handling, resource management, or meaningful simplification at its call sites.
 - Credit code derived from other projects in a short header comment (source, license, copyright).
 
 ## Naming and Typing
@@ -44,3 +45,5 @@ Comment only where the code isn't self-explanatory: non-obvious tricks, invarian
 
 - Parametrize with pytest, giving cases readable ids and marks so subsets are selectable.
 - Centralize skip logic and shared configuration rather than scattering them through test files.
+- Test externally meaningful behavior and public contracts. Avoid tests that only assert private helper plumbing, pass-through wrappers, or implementation decomposition.
+- Add coverage in proportion to risk: prefer a small number of focused behavioral tests over broad tests that freeze incidental structure.

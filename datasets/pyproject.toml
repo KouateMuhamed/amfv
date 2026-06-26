@@ -5,7 +5,16 @@ description = "Dataset ingestion, processing, and construction for AMFV"
 requires-python = ">=3.13"
 dependencies = [
     "amfv-utils",
+    "datasets>=3.0.0,<5.0.0",
+    "httpx>=0.25.1,<1.0.0",
+    "lxml>=5.0.0",
+    "markdownify>=0.14.0,<2.0.0",
+    "rich>=13.7.0,<15.0.0",
+    "typer>=0.12.0,<1.0.0",
 ]
+
+[project.scripts]
+amfv-scrape = "amfv_datasets.scraping.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]

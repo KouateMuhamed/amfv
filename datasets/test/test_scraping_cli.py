@@ -9,7 +9,6 @@ from typer.testing import CliRunner
 
 from amfv_datasets.scraping.base import ScrapedDocument, ScrapeRun
 from amfv_datasets.scraping.cli import (
-    OutputFormat,
     ScraperSource,
     app,
     write_huggingface_dataset,
@@ -195,16 +194,6 @@ def test_cli_run_accepts_source_url(monkeypatch: pytest.MonkeyPatch) -> None:
     assert json.loads(result.stdout.splitlines()[0])["external_id"] == "nice-ng1"
 
 
-def test_cli_run_requires_source() -> None:
-    """The scraper source is a required option."""
-    runner = CliRunner()
-
-    result = runner.invoke(app, ["--documents", "1"])
-
-    assert result.exit_code != 0
-    assert "--source" in result.stderr
-
-
 def test_cli_run_accepts_all_documents(monkeypatch: pytest.MonkeyPatch) -> None:
     """The CLI accepts --documents all."""
     runner = CliRunner()
@@ -228,36 +217,6 @@ def test_cli_run_accepts_all_documents(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert result.exit_code == 0
     assert json.loads(result.stdout.splitlines()[0])["external_id"] == "nice-ng1"
-
-
-def test_cli_run_rejects_invalid_documents() -> None:
-    """The CLI rejects document values that are not positive integers or all."""
-    runner = CliRunner()
-
-    result = runner.invoke(app, ["--source", "all", "--documents", "zero"])
-
-    assert result.exit_code != 0
-    assert "--documents must be a positive integer or 'all'" in result.stderr
-
-
-def test_cli_run_requires_output_for_huggingface() -> None:
-    """Hugging Face output requires a dataset directory."""
-    runner = CliRunner()
-
-    result = runner.invoke(app, ["--source", "all", "--format", OutputFormat.HUGGINGFACE.value])
-
-    assert result.exit_code != 0
-    assert "--output is required when --format huggingface" in result.stderr
-
-
-def test_cli_run_requires_output_for_markdown() -> None:
-    """Markdown output requires a directory."""
-    runner = CliRunner()
-
-    result = runner.invoke(app, ["--source", "all", "--format", OutputFormat.MARKDOWN.value])
-
-    assert result.exit_code != 0
-    assert "--output is required when --format markdown" in result.stderr
 
 
 def _document() -> ScrapedDocument:

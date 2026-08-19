@@ -69,12 +69,12 @@ def default_client(
     return httpx.Client(headers=client_headers, timeout=timeout, follow_redirects=follow_redirects)
 
 
-def scrape_listing_documents[ListingItemT](
+def scrape_listing_documents[ClientT, ListingItemT](
     *,
     documents: int | None,
-    client_factory: Callable[[], AbstractContextManager[httpx.Client]],
-    list_page: Callable[[httpx.Client, int], Iterable[ListingItemT]],
-    scrape_item: Callable[[httpx.Client, ListingItemT], ScrapedDocument],
+    client_factory: Callable[[], AbstractContextManager[ClientT]],
+    list_page: Callable[[ClientT, int], Iterable[ListingItemT]],
+    scrape_item: Callable[[ClientT, ListingItemT], ScrapedDocument | None],
     document_delay_seconds: float = 5.0,
     first_page_items: Iterable[ListingItemT] | None = None,
 ) -> Iterable[ScrapedDocument]:
@@ -83,9 +83,11 @@ def scrape_listing_documents[ListingItemT](
     Args:
         documents: Number of documents to scrape. When unset, listing pages are
             fetched until a page returns no items (default: None).
-        client_factory: Factory returning a context-managed HTTP client.
+        client_factory: Factory returning a context-managed client, passed to
+            `list_page` and `scrape_item` unchanged.
         list_page: Function that lists source-specific items for a page.
-        scrape_item: Function that scrapes one listed item into a document.
+        scrape_item: Function that scrapes one listed item into a document. It
+            may return None to skip a discovered item that is not a document.
         document_delay_seconds: Delay before scraping each document after the
             first one (default: 5.0).
         first_page_items: Already-fetched first listing page items. When set,
@@ -99,6 +101,7 @@ def scrape_listing_documents[ListingItemT](
     with client_factory() as client:
         page = 1
         scraped = 0
+        attempted = 0
         page_items = list(first_page_items) if first_page_items is not None else None
         while documents is None or scraped < documents:
             if page_items is None:
@@ -111,9 +114,13 @@ def scrape_listing_documents[ListingItemT](
             for item in items:
                 if documents is not None and scraped >= documents:
                     break
-                if scraped and document_delay_seconds:
+                if attempted and document_delay_seconds:
                     time.sleep(document_delay_seconds)
-                yield scrape_item(client, item)
+                document = scrape_item(client, item)
+                attempted += 1
+                if document is None:
+                    continue
+                yield document
                 scraped += 1
             page += 1
 

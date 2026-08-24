@@ -126,6 +126,7 @@ def test_scrape_guideline_extracts_content_and_link_metadata() -> None:
         "https://doi.org/10.1093/cid/example",
     ]
     assert document.metadata["pdf_links"] == ["https://academic.oup.com/example.pdf"]
+    assert document.metadata["statuses"] == ["Current"]
     assert document.metadata["content_length_chars"] == len(document.content)
     assert document.metadata["quality_flags"] == ["short_content"]
 
@@ -136,6 +137,17 @@ def test_scrape_guideline_strips_links_when_requested() -> None:
 
     assert "Recommendation text with evidence." in document.content
     assert "[evidence]" not in document.content
+
+
+def test_scrape_guideline_merges_listing_and_page_statuses() -> None:
+    """Listing and page statuses are merged once in their source order."""
+    document = scrape_guideline(
+        _guideline_client(_guideline_html(statuses=("Current", "In Development"))),
+        _ref(statuses=("Current", "Endorsed")),
+    )
+
+    assert document.metadata["statuses"] == ["Current", "Endorsed", "In Development"]
+    assert document.metadata["quality_flags"] == ["short_content"]
 
 
 def test_scrape_idsa_returns_normalized_document() -> None:
@@ -162,19 +174,54 @@ def test_scrape_idsa_returns_normalized_document() -> None:
 
 
 @pytest.mark.parametrize(
-    ("paragraph", "expected_flags"),
+    ("paragraph", "statuses", "expected_flags"),
     [
-        ("Useful abstract.", ["short_content"]),
-        ("Recommendation text. " * 700, []),
+        ("Useful abstract.", ("Current",), ["short_content"]),
+        ("Recommendation text. " * 700, ("Current",), []),
+        ("Useful abstract.", ("Archived",), ["short_content", "outdated"]),
+        ("Recommendation text. " * 700, ("Archived",), ["outdated"]),
+        ("Useful abstract.", ("In Development",), ["short_content"]),
     ],
-    ids=["short", "long"],
+    ids=["current-short", "current-long", "archived-short", "archived-long", "in-development"],
 )
-def test_scrape_guideline_sets_content_quality_flags(paragraph: str, expected_flags: list[str]) -> None:
-    """Short content is flagged while long content is left unflagged."""
-    document = scrape_guideline(_guideline_client(_guideline_html(paragraph=paragraph)), _ref())
+def test_scrape_guideline_sets_content_quality_flags(
+    paragraph: str,
+    statuses: tuple[str, ...],
+    expected_flags: list[str],
+) -> None:
+    """Content length and archival state produce independent quality flags."""
+    document = scrape_guideline(
+        _guideline_client(_guideline_html(paragraph=paragraph, statuses=statuses)),
+        _ref(statuses=statuses),
+    )
 
     assert document.metadata["content_length_chars"] == len(document.content)
+    assert document.metadata["statuses"] == list(statuses)
     assert document.metadata["quality_flags"] == expected_flags
+
+
+def test_scrape_idsa_url_uses_page_status_for_outdated_flag() -> None:
+    """A directly supplied archived URL derives its status from the page."""
+    url = "https://www.idsociety.org/practice-guideline/archived-guideline/"
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            text=_guideline_html(title="Archived Guideline", statuses=("Archived",)),
+            request=request,
+        )
+    )
+
+    class ClientFactory:
+        def __call__(self) -> httpx.Client:
+            return httpx.Client(transport=transport)
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr("amfv_datasets.scraping.idsa.default_client", ClientFactory())
+        documents = list(scrape_idsa(documents=1, url=url).documents)
+
+    assert len(documents) == 1
+    assert documents[0].metadata["statuses"] == ["Archived"]
+    assert documents[0].metadata["quality_flags"] == ["short_content", "outdated"]
 
 
 def _listing_client() -> httpx.Client:
@@ -220,7 +267,13 @@ def _listing_item(*, slug: str, title: str, year: int, statuses: tuple[str, ...]
     """
 
 
-def _guideline_html(*, title: str = "Current Guideline", paragraph: str = "Useful abstract.") -> str:
+def _guideline_html(
+    *,
+    title: str = "Current Guideline",
+    paragraph: str = "Useful abstract.",
+    statuses: tuple[str, ...] = ("Current",),
+) -> str:
+    status_html = "".join(f'<span class="status">{status.upper()}</span>' for status in statuses)
     return f"""
         <html>
           <title>{title} | IDSA</title>
@@ -229,6 +282,7 @@ def _guideline_html(*, title: str = "Current Guideline", paragraph: str = "Usefu
             <p>Intro column noise.</p>
           </div>
           <div class="standardpage-col-left">
+            <section class="status-section">{status_html}</section>
             <p><a href="https://academic.oup.com/example.pdf">Download PDF</a></p>
             <h1>{title}</h1>
             <h3>Table of Contents</h3>
@@ -248,11 +302,11 @@ def _guideline_html(*, title: str = "Current Guideline", paragraph: str = "Usefu
     """
 
 
-def _ref() -> IDSAGuidelineRef:
+def _ref(*, statuses: tuple[str, ...] = ("Current",)) -> IDSAGuidelineRef:
     return IDSAGuidelineRef(
         title="Current Guideline",
         slug="current-guideline",
         page_url="https://www.idsociety.org/practice-guideline/current-guideline/",
         year=2024,
-        statuses=("Current",),
+        statuses=statuses,
     )

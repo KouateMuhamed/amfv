@@ -109,15 +109,16 @@ def _build_guideline_text(
     ref: IDSAGuidelineRef,
     *,
     link_mode: LinkMode = LinkMode.KEEP,
-) -> tuple[str, int, str, dict[str, list[str]]]:
+) -> tuple[str, int, str, dict[str, list[str]], tuple[str, ...]]:
     response = client.get(ref.page_url)
     response.raise_for_status()
     title = document_title(response.text, fallback=ref.title)
+    statuses = tuple(dict.fromkeys((*ref.statuses, *_page_statuses(response.text))))
     content_html = _guideline_content_html(response.text)
     content = html_to_markdown(content_html, link_mode=link_mode, base_url=BASE_URL)
     if not content:
         raise IDSAFetchError(f"No readable content for IDSA guideline '{ref.slug}'")
-    return content, _section_count(content_html), title, _links_metadata(content_html)
+    return content, _section_count(content_html), title, _links_metadata(content_html), statuses
 
 
 def scrape_guideline(
@@ -134,7 +135,11 @@ def scrape_guideline(
         link_mode: Whether links are kept as markdown links or stripped to their
             visible text (default: LinkMode.KEEP).
     """
-    content, section_count, title, links_metadata = _build_guideline_text(client, ref, link_mode=link_mode)
+    content, section_count, title, links_metadata, statuses = _build_guideline_text(
+        client,
+        ref,
+        link_mode=link_mode,
+    )
     return ScrapedDocument(
         source="idsa",
         external_id=f"idsa-{ref.slug}",
@@ -144,11 +149,11 @@ def scrape_guideline(
         section_count=section_count,
         metadata={
             "year": ref.year,
-            "statuses": list(ref.statuses),
+            "statuses": list(statuses),
             "slug": ref.slug,
             "listing_url": LISTING_URL,
             "content_length_chars": len(content),
-            "quality_flags": _quality_flags(content),
+            "quality_flags": _quality_flags(content, statuses=statuses),
             **links_metadata,
         },
     )
@@ -291,6 +296,20 @@ def _guideline_content_html(html_text: str) -> str:
     return content_html
 
 
+def _page_statuses(html_text: str) -> tuple[str, ...]:
+    doc = lxml_html.fromstring(html_text)
+    values = doc.xpath(
+        "//*[contains(concat(' ', normalize-space(@class), ' '), ' status-section ')]"
+        "//*[contains(concat(' ', normalize-space(@class), ' '), ' status ')]/text()"
+    )
+    statuses: list[str] = []
+    for value in values:
+        status = clean_text(value, drop_numeric_citations=False).title()
+        if status:
+            statuses.append(status)
+    return tuple(statuses)
+
+
 def _remove_noise(content: lxml_html.HtmlElement) -> None:
     noise_xpath = (
         ".//*[self::script or self::style or self::noscript or self::svg or self::button"
@@ -360,10 +379,12 @@ def _section_count(content_html: str) -> int:
     return max(1, len(headings))
 
 
-def _quality_flags(content: str) -> list[str]:
+def _quality_flags(content: str, *, statuses: tuple[str, ...]) -> list[str]:
     flags: list[str] = []
     if len(content) < _SHORT_CONTENT_CHARS:
         flags.append("short_content")
+    if "Archived" in statuses:
+        flags.append("outdated")
     return flags
 
 

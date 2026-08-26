@@ -83,24 +83,15 @@ def idsa_ref_from_url(url: str) -> IDSAGuidelineRef:
 
 def list_practice_guidelines(
     client: httpx.Client,
-    *,
-    include_archived: bool = False,
-    include_in_development: bool = False,
 ) -> IDSAGuidelineListingPage:
     """Return IDSA practice guideline refs from the A-Z listing.
 
     Args:
         client: HTTP client used to fetch the listing page.
-        include_archived: Whether archived guidelines are included (default: False).
-        include_in_development: Whether in-development guidelines are included (default: False).
     """
     response = client.get(LISTING_URL)
     response.raise_for_status()
-    refs = _parse_listing(
-        response.text,
-        include_archived=include_archived,
-        include_in_development=include_in_development,
-    )
+    refs = _parse_listing(response.text)
     return IDSAGuidelineListingPage(refs=refs, total=len(refs))
 
 
@@ -109,7 +100,7 @@ def _build_guideline_text(
     ref: IDSAGuidelineRef,
     *,
     link_mode: LinkMode = LinkMode.KEEP,
-) -> tuple[str, int, str, dict[str, list[str]], tuple[str, ...]]:
+) -> tuple[str, str, dict[str, list[str]], tuple[str, ...]]:
     response = client.get(ref.page_url)
     response.raise_for_status()
     title = document_title(response.text, fallback=ref.title)
@@ -118,7 +109,7 @@ def _build_guideline_text(
     content = html_to_markdown(content_html, link_mode=link_mode, base_url=BASE_URL)
     if not content:
         raise IDSAFetchError(f"No readable content for IDSA guideline '{ref.slug}'")
-    return content, _section_count(content_html), title, _links_metadata(content_html), statuses
+    return content, title, _links_metadata(content_html), statuses
 
 
 def scrape_guideline(
@@ -135,7 +126,7 @@ def scrape_guideline(
         link_mode: Whether links are kept as markdown links or stripped to their
             visible text (default: LinkMode.KEEP).
     """
-    content, section_count, title, links_metadata, statuses = _build_guideline_text(
+    content, title, links_metadata, statuses = _build_guideline_text(
         client,
         ref,
         link_mode=link_mode,
@@ -146,7 +137,6 @@ def scrape_guideline(
         title=title,
         url=ref.page_url,
         content=content,
-        section_count=section_count,
         metadata={
             "year": ref.year,
             "statuses": list(statuses),
@@ -164,8 +154,6 @@ def scrape_idsa(
     documents: int | None,
     link_mode: LinkMode = LinkMode.KEEP,
     url: str | None = None,
-    include_archived: bool = False,
-    include_in_development: bool = False,
 ) -> ScrapeRun:
     """Scrape IDSA practice guidelines from a URL or the A-Z listing.
 
@@ -176,9 +164,6 @@ def scrape_idsa(
         link_mode: Whether links are kept as markdown links or stripped to their
             visible text (default: LinkMode.KEEP).
         url: IDSA source URL to scrape as a single document (default: None).
-        include_archived: Whether archived guidelines are included (default: False).
-        include_in_development: Whether in-development guidelines are included
-            (default: False).
     """
     if url is not None:
 
@@ -189,11 +174,7 @@ def scrape_idsa(
         return ScrapeRun(documents=scrape_url(), total=1)
 
     with default_client() as client:
-        listing = list_practice_guidelines(
-            client,
-            include_archived=include_archived,
-            include_in_development=include_in_development,
-        )
+        listing = list_practice_guidelines(client)
     total = listing.total if documents is None or listing.total is None else min(documents, listing.total)
     return ScrapeRun(
         total=total,
@@ -210,9 +191,6 @@ def scrape_idsa(
 
 def _parse_listing(
     html_text: str,
-    *,
-    include_archived: bool,
-    include_in_development: bool,
 ) -> list[IDSAGuidelineRef]:
     doc = lxml_html.fromstring(html_text)
     items = doc.xpath(
@@ -230,11 +208,7 @@ def _parse_listing(
                 ".//*[contains(concat(' ', normalize-space(@class), ' '), ' category-dot ')]/text()"
             )
         )
-        if not _included_statuses(
-            statuses,
-            include_archived=include_archived,
-            include_in_development=include_in_development,
-        ):
+        if not _included_statuses(statuses):
             continue
         href = link[0].get("href")
         if not href:
@@ -257,18 +231,11 @@ def _parse_listing(
 
 def _included_statuses(
     statuses: tuple[str, ...],
-    *,
-    include_archived: bool,
-    include_in_development: bool,
 ) -> bool:
     has_current = "Current" in statuses
     has_archived = "Archived" in statuses
     has_in_development = "In Development" in statuses
-    if has_archived and not include_archived:
-        return False
-    if has_in_development and not include_in_development:
-        return False
-    return has_current or (has_archived and include_archived) or (has_in_development and include_in_development)
+    return not has_in_development and (has_current or has_archived)
 
 
 def _parse_year(item: lxml_html.HtmlElement) -> int | None:
@@ -325,6 +292,7 @@ def _remove_noise(content: lxml_html.HtmlElement) -> None:
     for element in content.xpath(noise_xpath):
         _drop_element(element)
     _remove_table_of_contents(content)
+    _remove_empty_headings(content)
     for element in content.xpath(".//*[self::a or self::p or self::div or self::span]"):
         if _BACK_TO_TOP_RE.match(element.text_content()):
             _drop_element(element)
@@ -349,6 +317,13 @@ def _heading_level(element: lxml_html.HtmlElement) -> int | None:
     return None
 
 
+def _remove_empty_headings(content: lxml_html.HtmlElement) -> None:
+    headings = content.xpath(".//*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6]")
+    for heading in headings:
+        if not clean_text(heading.text_content(), drop_numeric_citations=False):
+            _drop_element(heading)
+
+
 def _drop_element(element: lxml_html.HtmlElement) -> None:
     parent = element.getparent()
     if parent is not None:
@@ -361,7 +336,10 @@ def _links_metadata(content_html: str) -> dict[str, list[str]]:
     pdf_links: list[str] = []
     for link in doc.xpath(".//a[@href]"):
         url = urljoin(BASE_URL, link.get("href")).split("#")[0].split("?")[0]
-        if urlparse(url).netloc.lower() in {"www.idsociety.org", "idsociety.org"}:
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"}:
+            continue
+        if parsed.netloc.lower() in {"www.idsociety.org", "idsociety.org"}:
             continue
         external_links.append(url)
         link_text = _WHITESPACE_RE.sub(" ", link.text_content()).strip()
@@ -371,12 +349,6 @@ def _links_metadata(content_html: str) -> dict[str, list[str]]:
         "external_links": absolute_unique_urls(external_links, base_url=BASE_URL),
         "pdf_links": absolute_unique_urls(pdf_links, base_url=BASE_URL),
     }
-
-
-def _section_count(content_html: str) -> int:
-    doc = lxml_html.fromstring(content_html)
-    headings = doc.xpath(".//*[self::h1 or self::h2 or self::h3]")
-    return max(1, len(headings))
 
 
 def _quality_flags(content: str, *, statuses: tuple[str, ...]) -> list[str]:

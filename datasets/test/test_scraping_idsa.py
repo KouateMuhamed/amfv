@@ -1,5 +1,7 @@
 """Tests for IDSA scraping helpers."""
 
+import inspect
+
 import httpx
 import pytest
 
@@ -29,7 +31,7 @@ def test_list_practice_guidelines_parses_listing_fields() -> None:
     """The IDSA listing parser normalizes title, URL, year, and statuses."""
     listing = list_practice_guidelines(_listing_client())
 
-    assert listing.total == 2
+    assert listing.total == 3
     assert listing.refs == [
         IDSAGuidelineRef(
             title="Current Guideline",
@@ -45,39 +47,30 @@ def test_list_practice_guidelines_parses_listing_fields() -> None:
             year=2023,
             statuses=("Current", "Endorsed"),
         ),
+        IDSAGuidelineRef(
+            title="Archived Guideline",
+            slug="archived-guideline",
+            page_url="https://www.idsociety.org/practice-guideline/archived-guideline/",
+            year=2021,
+            statuses=("Archived",),
+        ),
     ]
 
 
-@pytest.mark.parametrize(
-    ("kwargs", "expected_slugs"),
-    [
-        ({}, ["current-guideline", "current-endorsed-guideline"]),
-        (
-            {"include_archived": True},
-            ["current-guideline", "current-endorsed-guideline", "archived-guideline"],
-        ),
-        (
-            {"include_in_development": True},
-            ["current-guideline", "current-endorsed-guideline", "development-guideline"],
-        ),
-        (
-            {"include_archived": True, "include_in_development": True},
-            [
-                "current-guideline",
-                "current-endorsed-guideline",
-                "archived-guideline",
-                "development-guideline",
-                "archived-development-guideline",
-            ],
-        ),
-    ],
-    ids=["default", "include-archived", "include-in-development", "include-both"],
-)
-def test_list_practice_guidelines_filters_statuses(kwargs: dict[str, bool], expected_slugs: list[str]) -> None:
-    """Status flags preserve the intended IDSA listing inclusion policy."""
-    listing = list_practice_guidelines(_listing_client(), **kwargs)
+def test_list_practice_guidelines_filters_unpublished_statuses() -> None:
+    """Current and archived records are kept while unpublished records are excluded."""
+    listing = list_practice_guidelines(_listing_client())
 
-    assert [ref.slug for ref in listing.refs] == expected_slugs
+    assert [ref.slug for ref in listing.refs] == [
+        "current-guideline",
+        "current-endorsed-guideline",
+        "archived-guideline",
+    ]
+
+
+def test_scrape_idsa_uses_the_shared_scraper_signature() -> None:
+    """The registered IDSA entry point accepts only the shared scraper options."""
+    assert tuple(inspect.signature(scrape_idsa).parameters) == ("documents", "link_mode", "url")
 
 
 def test_idsa_ref_from_url_normalizes_practice_guideline_url() -> None:
@@ -112,7 +105,7 @@ def test_scrape_guideline_extracts_content_and_link_metadata() -> None:
     document = scrape_guideline(_guideline_client(_guideline_html()), _ref())
 
     assert document.title == "Current Guideline"
-    assert document.section_count == 3
+    assert document.section_count == 1
     assert "# Current Guideline" in document.content
     assert "## Abstract" in document.content
     assert "## Recommendations" in document.content
@@ -129,6 +122,7 @@ def test_scrape_guideline_extracts_content_and_link_metadata() -> None:
     assert document.metadata["statuses"] == ["Current"]
     assert document.metadata["content_length_chars"] == len(document.content)
     assert document.metadata["quality_flags"] == ["short_content"]
+    assert "###" not in document.content
 
 
 def test_scrape_guideline_strips_links_when_requested() -> None:
@@ -296,7 +290,11 @@ def _guideline_html(
             <p>{paragraph}</p>
             <h2>Recommendations</h2>
             <p>Recommendation text with <a href="https://doi.org/10.1093/cid/example">evidence</a>.</p>
+            <p><a href="mailto:author@example.org">Email the author</a></p>
+            <p><a href="tel:+12025550123">Call the author</a></p>
+            <p><a href="javascript:void(0)">Open a script</a></p>
             <p>Back to top</p>
+            <h3><a id="empty-heading"></a></h3>
           </div>
         </html>
     """
